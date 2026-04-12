@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LearnML | Educational Dashboard</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.4.0/dist/tf.min.js"></script>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo-container">
+                <h1 class="logo">Learn<span>ML</span></h1>
+                <p class="subtitle">Machine Learning Lab</p>
+            </div>
+            
+            <nav class="tabs">
+                <button class="tab-btn active" data-target="supervised-lab">
+                    <span class="icon">✏️</span> Supervised Lab
+                </button>
+                <button class="tab-btn" data-target="unsupervised-lab">
+                    <span class="icon">✨</span> Unsupervised Lab
+                </button>
+                <button class="tab-btn" data-target="rl-arena">
+                    <span class="icon">🏎️</span> Reinforcement Arena
+                </button>
+            </nav>
+
+            <div class="analytics">
+                <h3>System Analytics</h3>
+                <div class="analytics-content">
+                    <div id="analytics-supervised" class="analytics-panel active">
+                        <div class="stat-box">
+                            <span class="stat-label">Model Status</span>
+                            <span class="stat-value" id="stat-model-status">Ready</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Top Prediction</span>
+                            <span class="stat-value highlight" id="stat-top-pred">--</span>
+                        </div>
+                    </div>
+
+                    <div id="analytics-unsupervised" class="analytics-panel">
+                        <div class="stat-box">
+                            <span class="stat-label">Total Stars</span>
+                            <span class="stat-value" id="stat-total-stars">0</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">K Clusters</span>
+                            <span class="stat-value highlight" id="stat-k-clusters">3</span>
+                        </div>
+                    </div>
+
+                    <div id="analytics-rl" class="analytics-panel">
+                        <div class="stat-box">
+                            <span class="stat-label">Generation</span>
+                            <span class="stat-value highlight" id="stat-generation">1</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Alive</span>
+                            <span class="stat-value" id="stat-alive">0/50</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Best Fitness</span>
+                            <span class="stat-value" id="stat-fitness">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="content-area">
+            <!-- Supervised Lab -->
+            <section id="supervised-lab" class="lab-section active glass-panel">
+                <header class="lab-header">
+                    <h2>Sketch-Guess Game</h2>
+                    <p>Draw a basic shape (Circle, Square, Triangle). The neural network will guess it in real-time.</p>
+                </header>
+                
+                <div class="lab-workspace">
+                    <div class="theory-panel glass-panel-inner">
+                        <h4>Supervised Learning</h4>
+                        <img src="assets/knn.png" alt="KNN classification" class="theory-image">
+                        <h5>K-Nearest Neighbors (KNN)</h5>
+                        <p>This algorithm learns strictly from labeled examples (the training data). When you draw a shape, your strokes are converted into an 8x8 pixel-density grid, creating a complex mathematical vector.</p>
+                        <h5>How it Classifies</h5>
+                        <ul>
+                            <li><strong>Feature Extraction:</strong> Converts your drawing into quantifiable numbers.</li>
+                            <li><strong>Euclidean Distance:</strong> The AI measures the mathematical distance between your drawing and the stored templates.</li>
+                            <li><strong>Neighbor Voting:</strong> The algorithm finds the closest (most similar) <i>K</i> templates. They vote on what shape you drew!</li>
+                        </ul>
+                        <hr class="theory-divider">
+                        <h5>Deep Dive: The Math Behind the Magic</h5>
+                        <p>K-Nearest Neighbors is incredibly elegant because it involves almost zero "training process". Unlike Deep Learning where weights slowly adjust over thousands of iterations, KNN simply memorizes the entire dataset. When a new point arrives, it computes the Pythagorean distance (Euclidean metric) to every single known point in multi-dimensional space. The top 'K' closest points cast a democratic vote to decide the class. Choosing the right value for 'K' is crucial: setting K=1 makes it highly sensitive to noise, whereas a huge K value blurs the boundaries completely.</p>
+                        
+                        <div id="quiz-supervised" class="quiz-container"></div>
+                    </div>
+                    <div class="demo-wrapper">
+                        <div class="canvas-container" id="supervised-canvas-container">
+                            <!-- p5.js will attach here -->
+                        </div>
+                        <div class="controls-panel glass-panel-inner">
+                            <div class="button-group">
+                                <button id="clear-sketch" class="secondary-btn">Clear Canvas</button>
+                            </div>
+                            
+                            <div class="chart-container">
+                                <h4>Confidence Levels</h4>
+                                <div class="bar-chart" id="confidence-chart">
+                                    <div class="bar-row"><span class="label">Circle</span><div class="bar"><div class="fill" id="bar-circle" style="width: 0%"></div></div><span class="val" id="val-circle">0%</span></div>
+                                    <div class="bar-row"><span class="label">Square</span><div class="bar"><div class="fill" id="bar-square" style="width: 0%"></div></div><span class="val" id="val-square">0%</span></div>
+                                    <div class="bar-row"><span class="label">Triangle</span><div class="bar"><div class="fill" id="bar-triangle" style="width: 0%"></div></div><span class="val" id="val-triangle">0%</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Unsupervised Lab -->
+            <section id="unsupervised-lab" class="lab-section glass-panel">
+                <header class="lab-header">
+                    <h2>Cluster Constellations</h2>
+                    <p>Click on the space canvas to add stars. Watch the K-Means algorithm group them automatically.</p>
+                </header>
+                
+                <div class="lab-workspace">
+                    <div class="theory-panel glass-panel-inner">
+                        <h4>Unsupervised Learning</h4>
+                        <img src="assets/kmeans.png" alt="K-Means clustering" class="theory-image">
+                        <h5>K-Means Clustering</h5>
+                        <p>Unlike supervised learning, K-Means operates on entirely unlabelled data. It seeks to autonomously discover hidden structures and groupings in pure chaos.</p>
+                        <h5>The Algorithm Steps</h5>
+                        <ul>
+                            <li><strong>Initialization:</strong> Randomly drops 'K' number of centroids into the data space.</li>
+                            <li><strong>Assignment:</strong> Every star belongs to whichever centroid is geometrically closest to it.</li>
+                            <li><strong>Optimization:</strong> Centroids move to the exact center (average) of their assigned stars.</li>
+                            <li><strong>Convergence:</strong> Repeats until the clusters stop shifting!</li>
+                        </ul>
+                        <hr class="theory-divider">
+                        <h5>Deep Dive: Uncovering Hidden Patterns</h5>
+                        <p>K-Means excels at pattern recognition when we don't know what we're looking for. It minimizes the 'variance' within clusters over successive iterations. However, it requires you to assume 'K' (the number of groups) in advance. It's highly sensitive to its initial random placement (this is why running it twice on the same data might look slightly different) and assumes clusters are relatively spherical. It's widely used in customer segmentation, fraud detection, and image color compression.</p>
+
+                        <div id="quiz-clustering" class="quiz-container"></div>
+                    </div>
+                    <div class="demo-wrapper">
+                        <div class="canvas-container" id="clustering-canvas-container">
+                            <canvas id="clustering-canvas" width="600" height="400"></canvas>
+                        </div>
+                        <div class="controls-panel glass-panel-inner">
+                            <div class="control-group">
+                                <label for="k-value">Clusters (K):</label>
+                                <input type="range" id="k-value" min="1" max="7" value="3">
+                                <span id="k-value-display">3</span>
+                            </div>
+                            <div class="button-group">
+                                <button id="run-kmeans" class="primary-btn glow-effect">Run K-Means</button>
+                                <button id="clear-clusters" class="secondary-btn">Clear Space</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reinforcement Arena -->
+            <section id="rl-arena" class="lab-section glass-panel">
+                <header class="lab-header">
+                    <h2>F1 Race Evolution</h2>
+                    <p>Observe a population of cars using Genetic Algorithms & Neural Networks to learn how to drive.</p>
+                </header>
+                
+                <div class="lab-workspace">
+                    <div class="theory-panel glass-panel-inner">
+                        <h4>Reinforcement Learning</h4>
+                        <img src="assets/rl.png" alt="Neuro-Evolution Reinforcement Learning" class="theory-image">
+                        <h5>Neuro-Evolution</h5>
+                        <p>Instead of learning from data, these AI Agents learn from their environment through trial, error, and natural selection.</p>
+                        <h5>The Evolution Loop</h5>
+                        <ul>
+                            <li><strong>Perception:</strong> 5 raycast sensors act as "eyes," measuring distances to the track boundaries.</li>
+                            <li><strong>The Brain:</strong> A Feed-Forward Neural Network processes these sensor inputs to determine steering and acceleration.</li>
+                            <li><strong>Fitness:</strong> Cars are evaluated! The further a car travels before crashing, the higher its score.</li>
+                            <li><strong>Reproduction:</strong> The top 10% are selected to breed. Their brain's weights undergo a 5% random mutation for the next generation.</li>
+                        </ul>
+                        <hr class="theory-divider">
+                        <h5>Deep Dive: Genetic Algorithms & Neural Nets</h5>
+                        <p>We are merging Neural Networks with Darwinian Evolution. Our "Brain" operates via matrix math, multiplying 5 sensor inputs with 8 hidden neuron weights to decide on steering angles. But instead of Backpropagation (which requires correct answers to calculate error), we cannot tell a car *exactly* how to turn. Instead, we let Biological Evolution take the wheel. If a car drives well (High Fitness), we copy its brain matrix verbatim. We randomly alter (mutate) 5% of its numbers and throw its offspring back onto the track. Eventually, the matrix converges purely because of survival of the fittest!</p>
+
+                        <div id="quiz-rl" class="quiz-container"></div>
+                    </div>
+                    <div class="demo-wrapper">
+                        <div class="canvas-container" id="arena-canvas-container">
+                            <!-- p5.js will attach here -->
+                        </div>
+                        <div class="controls-panel glass-panel-inner">
+                            <div class="rl-info">
+                                <h4>Neural Network Brain</h4>
+                                <p>Inputs: 5 Raycast Sensors</p>
+                                <p>Hidden: 8 Neurons</p>
+                                <p>Outputs: Steering, Acceleration</p>
+                                <hr>
+                                <p>Mutation Rate: 5%</p>
+                                <p>Population: 50 Cars</p>
+                            </div>
+                            <div class="button-group">
+                                <button id="toggle-fast-forward" class="primary-btn">Fast Forward: OFF</button>
+                                <button id="restart-evolution" class="danger-btn">Kill & Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Application Logic -->
+    <script src="js/quiz.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/neuralNetwork.js"></script>
+    <script src="js/car.js"></script>
+    <script src="js/arena.js"></script>
+    <script src="js/clustering.js"></script>
+    <script src="js/supervised.js"></script>
+</body>
+</html>
