@@ -1,47 +1,59 @@
 // js/racer.js
 
 const racerConfig = (p) => {
-    // Simple FFNN class for the car
-    class FFNN {
-        constructor(weights = null) {
-            this.inputs = 5;
-            this.hidden = 6;
-            this.outputs = 2;
-            
-            // Total weights = (5*6 + 6 biases) + (6*2 + 2 biases) = 36 + 14 = 50
-            this.totalWeights = 50;
-            
-            if (weights && weights.length === this.totalWeights) {
+    // Standard Sigmoid Activation Function
+    // This maps any real-valued number into a value between 0 and 1
+    function sigmoid(x) {
+        return 1 / (1 + Math.exp(-x));
+    }
+
+    // Multi-Dimensional Generic Feed-Forward Neural Network
+    // Responsible for computing actions based on the weights given
+    class NeuralNetwork {
+        constructor(shape, weights = null) {
+            this.shape = shape;
+            this.size = shape.length;
+            this.weights = [];
+
+            if (weights) {
                 this.weights = weights;
             } else {
-                this.weights = Array.from({length: this.totalWeights}, () => (Math.random() * 2) - 1);
+                for (let i = 1; i < this.size; i++) {
+                    let rows = this.shape[i-1];
+                    let cols = this.shape[i];
+                    let layer = [];
+                    for (let r = 0; r < rows; r++) {
+                        let row = [];
+                        for (let c = 0; c < cols; c++) {
+                            row.push(Math.random() - 0.5);
+                        }
+                        layer.push(row);
+                    }
+                    this.weights.push(layer);
+                }
             }
         }
-        
-        predict(inputs) {
-            let idx = 0;
-            let hiddenVals = [];
-            // Hidden layer
-            for (let i = 0; i < this.hidden; i++) {
-                let sum = 0;
-                for (let j = 0; j < this.inputs; j++) {
-                    sum += inputs[j] * this.weights[idx++];
+
+        predict(inp) {
+            let layer = [...inp];
+            for (let i = 0; i < this.size - 1; i++) {
+                let nextLayer = new Array(this.shape[i+1]).fill(0);
+                let currentWeights = this.weights[i];
+                
+                for (let outNode = 0; outNode < this.shape[i+1]; outNode++) {
+                    let sum = 0;
+                    for (let inNode = 0; inNode < this.shape[i]; inNode++) {
+                        sum += layer[inNode] * currentWeights[inNode][outNode];
+                    }
+                    nextLayer[outNode] = sum;
                 }
-                sum += this.weights[idx++]; // bias
-                hiddenVals.push(Math.max(0, sum)); // ReLU
-            }
-            
-            let outputsVals = [];
-            // Output layer
-            for (let i = 0; i < this.outputs; i++) {
-                let sum = 0;
-                for (let j = 0; j < this.hidden; j++) {
-                    sum += hiddenVals[j] * this.weights[idx++];
+                
+                for (let ind = 0; ind < nextLayer.length; ind++) {
+                    nextLayer[ind] = sigmoid(nextLayer[ind]);
                 }
-                sum += this.weights[idx++]; // bias
-                outputsVals.push(Math.tanh(sum)); // -1 to 1
+                layer = nextLayer;
             }
-            return outputsVals; // [steer, accelerate/brake]
+            return layer;
         }
     }
 
@@ -53,15 +65,30 @@ const racerConfig = (p) => {
             this.speed = 0;
             this.maxSpeed = 8;
             this.alive = true;
-            this.score = 0; // Fitness
+            this.score = 0; 
             
-            this.brain = new FFNN(weights);
+            // Explicit network architecture config:
+            // 6 explicit input layer options, two hidden layers (4 and 3 nodes each), 2 output nodes (turning, acceleration)
+            this.brain = new NeuralNetwork([6, 4, 3, 2], weights);
             
-            // 5 sensors: 0, 22.5, -22.5, 45, -45 degrees
-            this.sensorAngles = [0, Math.PI/8, -Math.PI/8, Math.PI/4, -Math.PI/4];
+            // Base 5 angle positions for radar measurements mapping around car parameters
+            // Coordinate points define offset ray limits around vehicle structure
+            this.sensorAngles = [
+                Math.atan2(-140, 25),
+                Math.atan2(-100, 190),
+                0,
+                Math.atan2(100, 190),
+                Math.atan2(140, 25)
+            ];
+            this.sensorLengths = [
+                Math.hypot(25, -140),
+                Math.hypot(190, -100),
+                300,
+                Math.hypot(190, 100),
+                Math.hypot(25, 140)
+            ];
             this.sensorReadings = [0, 0, 0, 0, 0];
             
-            // For glowing trail
             this.history = [];
         }
 
@@ -79,8 +106,6 @@ const racerConfig = (p) => {
             this.y += Math.sin(this.angle) * this.speed;
             
             // Fitness Function: (Distance * 10) + (Speed * 100)
-            // Distance approximated by just speed accumulated, as long as it's moving forward
-            // Penalty for backwards driving
             if (this.speed > 0) {
                 this.score += (this.speed * 100) + 10;
             } else {
@@ -100,7 +125,7 @@ const racerConfig = (p) => {
                 let rayX = this.x;
                 let rayY = this.y;
                 let reading = 0;
-                let maxLen = 120;
+                let maxLen = this.sensorLengths[i];
                 while (reading < maxLen) {
                     rayX += Math.cos(absAngle) * 5;
                     rayY += Math.sin(absAngle) * 5;
@@ -114,15 +139,20 @@ const racerConfig = (p) => {
             }
 
             // Neural Net decision
-            let decision = this.brain.predict(this.sensorReadings);
+            let normalizedSpeed = this.speed / this.maxSpeed;
+            let inputs = [...this.sensorReadings, normalizedSpeed];
+            let decision = this.brain.predict(inputs);
             
-            let steer = decision[0] * 0.15; // Steering force
-            let acc = decision[1] * 0.8;   // Acceleration force
+            // Re-scale the 0-1 outputs from Sigmoid into standard metrics
+            // Index 0 adjusts steering direction, mapping to a full rotation max scalar
+            let steer = (decision[0] - 0.5) * 2 * (4 * Math.PI / 180); 
+            // Index 1 controls forward thrust or acceleration output
+            let acc = decision[1] * 1; 
             
             this.angle += steer;
-            this.speed += acc; // Momentum
+            this.speed += acc; 
             
-            // Friction and drag
+            // Standard simulated physics variables for drag and environment friction 
             this.speed *= 0.95; 
             if (this.speed > this.maxSpeed) this.speed = this.maxSpeed;
             if (this.speed < -2) this.speed = -2;
@@ -137,7 +167,7 @@ const racerConfig = (p) => {
                 p.strokeWeight(4);
                 
                 for (let i = 0; i < this.history.length - 1; i++) {
-                    p.stroke(138, 43, 226, p.map(i, 0, this.history.length, 0, 255)); // purple neon
+                    p.stroke(138, 43, 226, p.map(i, 0, this.history.length, 0, 255)); 
                     p.line(this.history[i].x, this.history[i].y, this.history[i+1].x, this.history[i+1].y);
                 }
             }
@@ -146,25 +176,23 @@ const racerConfig = (p) => {
             p.rotate(this.angle);
             
             if (this.alive) {
-                p.fill(0, 255, 255); // Cyan body
+                p.fill(0, 255, 255); 
                 p.stroke(isLeader ? p.color(138, 43, 226) : p.color(255));
                 p.strokeWeight(isLeader ? 2 : 1);
                 
-                // Draw sensors for all alive cars with opacity
                 p.stroke(0, 255, 255, isLeader ? 150 : 50);
                 p.strokeWeight(1);
                 for (let i=0; i<this.sensorAngles.length; i++) {
-                    let len = this.sensorReadings[i] * 120;
+                    let len = this.sensorReadings[i] * this.sensorLengths[i];
                     p.line(0, 0, Math.cos(this.sensorAngles[i]) * len, Math.sin(this.sensorAngles[i]) * len);
                 }
             } else {
-                p.fill(255, 0, 0, 100); // Dead red
+                p.fill(255, 0, 0, 100); 
             }
             
             p.noStroke();
             p.rectMode(p.CENTER);
             if (isLeader && this.alive) {
-                // Glow body for leader
                 p.fill(138, 43, 226);
                 p.rect(0, 0, 20, 14);
                 p.fill(0, 255, 255);
@@ -176,13 +204,14 @@ const racerConfig = (p) => {
     }
 
     let cars = [];
-    let popSize = 25;
+    // Number of agent instances generated per simulation population epoch
+    let popSize = 40; 
     let trackInner = 70;
     let trackOuter = 150;
     let generation = 1;
     let evolving = false;
     let epochCounter = 0;
-    const maxEpochs = 600; // max steps before forced evolution
+    const maxEpochs = 1200; // 30 seconds at 40fps 
 
     function initPopulation(weightsArray = null) {
         cars = [];
@@ -210,21 +239,19 @@ const racerConfig = (p) => {
     };
 
     p.draw = () => {
-        p.background(10, 10, 25); // Dark Cyber
+        p.background(10, 10, 25); 
         p.translate(p.width/2, p.height/2);
 
-        // Draw track
-        // Outer glow
         p.fill(0, 255, 255, 20);
         p.noStroke();
         p.circle(0, 0, trackOuter * 2 + 10);
         
-        p.fill(20, 20, 40); // Track asphalt
-        p.stroke(0, 255, 255); // Neon track bounds
+        p.fill(20, 20, 40); 
+        p.stroke(0, 255, 255); 
         p.strokeWeight(2);
         p.circle(0, 0, trackOuter * 2);
         
-        p.fill(10, 10, 25); // Inner void
+        p.fill(10, 10, 25); 
         p.stroke(0, 255, 255);
         p.circle(0, 0, trackInner * 2);
 
@@ -241,7 +268,6 @@ const racerConfig = (p) => {
         let leaderIndex = -1;
         let bestScore = -Infinity;
         
-        // Find leader
         for (let i = 0; i < cars.length; i++) {
             if (cars[i].score > bestScore) {
                 bestScore = cars[i].score;
@@ -254,7 +280,6 @@ const racerConfig = (p) => {
         
         for (let i = 0; i < cars.length; i++) {
             cars[i].update(trackInner, trackOuter);
-            // Draw dead cars first, then alive, then leader on top
             if (!cars[i].alive) {
                 cars[i].draw(false);
             }
@@ -266,7 +291,6 @@ const racerConfig = (p) => {
             }
         }
         
-        // Draw leader on top
         if (leaderIndex !== -1) {
             cars[leaderIndex].draw(true);
         }
@@ -279,29 +303,31 @@ const racerConfig = (p) => {
     async function evolveNextGen() {
         evolving = true;
         
+        // Preparing generation dataset: mapping agent performance and inverse distancing bounds to pass array matrix 
         let reqData = {
             generation: generation,
-            scores: cars.map(c => c.score),
-            population: cars.map(c => ({ weights: c.brain.weights }))
+            results: cars.map(c => ({
+                score: c.score,
+                dist: -c.score, // Visualizer lacks discrete checkpoints, inverted score provides fallback tracking
+                weights: c.brain.weights
+            }))
         };
 
         try {
-            // Log for realism
             console.log("Transmitting Gen " + generation + " data...");
             const response = await fetchAPI('/api/evolve/f1', reqData, false);
             
             generation++;
-            let tag = document.getElementById('rl-generation')
+            let tag = document.getElementById('rl-generation');
             tag.innerText = `Gen: ${generation}`;
             
-            // Cycle colors or glow for Gen update
             tag.style.boxShadow = "0 0 10px #8a2be2";
             setTimeout(() => tag.style.boxShadow = "0 0 5px #8a2be2", 300);
 
             initPopulation(response.next_generation);
         } catch (err) {
             console.error(err);
-            initPopulation(); // Restart in case of error
+            initPopulation(); 
         }
         
         evolving = false;
